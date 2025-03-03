@@ -44,20 +44,50 @@ PinCodeDistance API calculates the **distance (in kilometers)** and **estimated 
 ## 📌 API Endpoints
 ### 🔹 Get Distance Between Two Pincodes
 **Endpoint:**  
-`GET /api/distance?pincode1={pincode1}&pincode2={pincode2}`
+`POST /api/pincode/distance`
 
-**Example Request:**
-```sh
-GET /api/distance?pincode1=110001&pincode2=560001
+**Request Body:**
+```json
+{
+  "OriginPincode": "110001",
+  "DestinationPincode": "560001"
+}
 ```
 
 **Response:**
 ```json
 {
-  "success": true,
-  "distance_km": 1740,
+  "distance": 1740,
   "duration": "30h 15m",
-  "message": "Success"
+  "distanceUnit": "km",
+  "status": {
+    "Code": 200,
+    "text": "success"
+  }
+}
+```
+
+### 🔹 Get Distance Using V2 (Enhanced Calculation)
+**Endpoint:**  
+`POST /api/pincode/distancev2`
+
+**Request Body:**
+```json
+{
+  "OriginPincode": "110001",
+  "DestinationPincode": "560001"
+}
+```
+
+**Response:**
+```json
+{
+  "distance": 1740,
+  "distanceUnit": "km",
+  "status": {
+    "Code": 200,
+    "text": "success"
+  }
 }
 ```
 
