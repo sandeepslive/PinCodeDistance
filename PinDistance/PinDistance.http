@@ -1,0 +1,6 @@
+@PinDistance_HostAddress = http://localhost:5144
+
+GET {{PinDistance_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
