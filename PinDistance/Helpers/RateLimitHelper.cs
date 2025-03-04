@@ -39,9 +39,11 @@ namespace PinDistance.Helpers
 
 
             // Read rate limit headers added by AspNetCoreRateLimit
+            var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
             if (context.Response.StatusCode == StatusCodes.Status401Unauthorized)
             {
+                Console.WriteLine($"⚠️ Unauthorized login attempt from IP: {clientIp}, Path: {context.Request.Path}");
                 await CopyResponse(memoryStream, originalBodyStream);
                 return;
             }
@@ -51,7 +53,6 @@ namespace PinDistance.Helpers
                 await CopyResponse(memoryStream, originalBodyStream);
                 return;
             }
-            var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
             var policies = await _ipPolicyStore.GetAsync("IpRateLimit");
             var rule = policies?.IpRules.FirstOrDefault(r => r.Ip == clientIp) ?? new IpRateLimitPolicy
             {
