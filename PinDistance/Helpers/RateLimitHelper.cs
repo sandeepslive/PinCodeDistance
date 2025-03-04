@@ -38,11 +38,14 @@ namespace PinDistance.Helpers
                 _logger.LogWarning("⚠️ Rate limit headers not found in response.");
             }
 
+
             var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
             if (context.Response.StatusCode == StatusCodes.Status401Unauthorized)
             {
+
                 _logger.LogWarning("⚠️ Unauthorized login attempt from IP: {ClientIp}, Path: {Path}", clientIp, context.Request.Path);
+
                 await CopyResponse(memoryStream, originalBodyStream);
                 return;
             }
