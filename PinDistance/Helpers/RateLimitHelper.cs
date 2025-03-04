@@ -1,5 +1,5 @@
 ﻿using AspNetCoreRateLimit;
-using Microsoft.Extensions.Configuration.EnvironmentVariables;
+using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -8,18 +8,19 @@ namespace PinDistance.Helpers
 {
     public class RateLimitHelper : IMiddleware
     {
-
         private readonly IRateLimitCounterStore _rateLimitCounterStore;
         private readonly IIpPolicyStore _ipPolicyStore;
-        public RateLimitHelper(IRateLimitCounterStore rateLimitCounterStore, IIpPolicyStore ipPolicyStore)
+        private readonly ILogger<RateLimitHelper> _logger;
+
+        public RateLimitHelper(IRateLimitCounterStore rateLimitCounterStore, IIpPolicyStore ipPolicyStore, ILogger<RateLimitHelper> logger)
         {
             _rateLimitCounterStore = rateLimitCounterStore;
             _ipPolicyStore = ipPolicyStore;
+            _logger = logger;
         }
 
         public async Task InvokeAsync(HttpContext context, RequestDelegate next)
         {
-
             var originalBodyStream = context.Response.Body;
             using var memoryStream = new MemoryStream();
             context.Response.Body = memoryStream;
@@ -27,32 +28,35 @@ namespace PinDistance.Helpers
             await next(context); // Process request
 
             if (context.Response.Headers.TryGetValue("X-Rate-Limit-Limit", out var limit1) &&
-            context.Response.Headers.TryGetValue("X-Rate-Limit-Remaining", out var remaining1) &&
-            context.Response.Headers.TryGetValue("X-Rate-Limit-Reset", out var reset1))
+                context.Response.Headers.TryGetValue("X-Rate-Limit-Remaining", out var remaining1) &&
+                context.Response.Headers.TryGetValue("X-Rate-Limit-Reset", out var reset1))
             {
-                Console.WriteLine($"🚀 Rate Limit Headers - Limit: {limit1}, Remaining: {remaining1}, Reset: {reset1}");
+                _logger.LogInformation("🚀 Rate Limit Headers - Limit: {Limit}, Remaining: {Remaining}, Reset: {Reset}", limit1, remaining1, reset1);
             }
             else
             {
-                Console.WriteLine("⚠️ Rate limit headers not found in response.");
+                _logger.LogWarning("⚠️ Rate limit headers not found in response.");
             }
 
 
-            // Read rate limit headers added by AspNetCoreRateLimit
             var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
             if (context.Response.StatusCode == StatusCodes.Status401Unauthorized)
             {
-                Console.WriteLine($"⚠️ Unauthorized login attempt from IP: {clientIp}, Path: {context.Request.Path}");
+
+                _logger.LogWarning("⚠️ Unauthorized login attempt from IP: {ClientIp}, Path: {Path}", clientIp, context.Request.Path);
+
                 await CopyResponse(memoryStream, originalBodyStream);
                 return;
             }
+
             if (context.Request.Path.StartsWithSegments("/api/auth/login", StringComparison.OrdinalIgnoreCase))
             {
-                Console.WriteLine("🔹 Skipping rate limiting for login request.");
+                _logger.LogInformation("🔹 Skipping rate limiting for login request.");
                 await CopyResponse(memoryStream, originalBodyStream);
                 return;
             }
+
             var policies = await _ipPolicyStore.GetAsync("IpRateLimit");
             var rule = policies?.IpRules.FirstOrDefault(r => r.Ip == clientIp) ?? new IpRateLimitPolicy
             {
@@ -64,21 +68,23 @@ namespace PinDistance.Helpers
             var limitKey = $"crlc_{clientIp}_{rulePeriod}";
 
             var bytes = Encoding.UTF8.GetBytes(limitKey);
-
             using var algorithm = SHA1.Create();
             var hash = algorithm.ComputeHash(bytes);
-            var key  = Convert.ToBase64String(hash);
+            var key = Convert.ToBase64String(hash);
             var counter = await _rateLimitCounterStore.GetAsync(key);
 
             var rateLimit = rule.Rules.FirstOrDefault()?.Limit ?? 10;
             var requestCount = counter?.Count ?? 0;
             var remaining = Math.Max(rateLimit - requestCount, 0);
             var reset = DateTime.UtcNow.ToString("o");
+
             context.Response.Headers["X-Rate-Limit-Limit"] = rateLimit.ToString();
             context.Response.Headers["X-Rate-Limit-Remaining"] = remaining.ToString();
             context.Response.Headers["X-Rate-Limit-Reset"] = reset;
 
-            // Modify JSON response
+            _logger.LogInformation("📊 Rate Limit Info - IP: {ClientIp}, Limit: {Limit}, Remaining: {Remaining}, Reset: {Reset}",
+                clientIp, rateLimit, remaining, reset);
+
             if (context.Response.ContentType?.Contains("application/json") == true)
             {
                 memoryStream.Seek(0, SeekOrigin.Begin);
@@ -108,6 +114,7 @@ namespace PinDistance.Helpers
             await source.CopyToAsync(destination);
         }
     }
+
     public static class RateLimitMiddlewareExtensions
     {
         public static IApplicationBuilder UseRateLimitMiddleware(this IApplicationBuilder builder)
